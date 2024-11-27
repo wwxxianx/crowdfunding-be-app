@@ -32,6 +32,12 @@
 $ npm install
 ```
 
+## Configuring the app
+
+1. Config all the env variables the `env.example` file
+2. Place it in your own `env` file or change the referencing directory accordingly
+3. Run first Prisma migration and create Prisma client
+
 ## Running the app
 
 ```bash
