@@ -1,0 +1,3 @@
+type OnboardAccountDto = {
+    accountId: string;
+}

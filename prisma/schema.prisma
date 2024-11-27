@@ -1,0 +1,499 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model State {
+  id        String     @id @default(uuid())
+  name      String
+  campaigns Campaign[]
+
+  @@map("states")
+}
+
+model TaxReceiptReports {
+  id             String @id @default(uuid())
+  user           User   @relation(fields: [userId], references: [id])
+  userId         String
+  receiptFileUrl String
+  year           Int
+
+  createdAt DateTime @default(now())
+
+  @@map("tax_receipt_reports")
+}
+
+model BankAccount {
+  // Stripe Connect Account ID as id
+  id               String  @id
+  user             User    @relation(fields: [userId], references: [id])
+  userId           String  @unique
+  detailsSubmitted Boolean @default(false)
+  payoutsEnabled   Boolean @default(false)
+  chargesEnabled   Boolean @default(false)
+  email            String?
+  error            String?
+
+  @@map("bank_accounts")
+}
+
+model OrganizationBankAccount {
+  id               String       @id
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  organizationId   String       @unique
+  detailsSubmitted Boolean      @default(false)
+  payoutsEnabled   Boolean      @default(false)
+  chargesEnabled   Boolean      @default(false)
+  email            String?
+  error            String?
+
+  @@map("organization_bank_accounts")
+}
+
+model User {
+  id                         String               @id @default(uuid())
+  fullName                   String
+  email                      String
+  isOnboardingCompleted      Boolean              @default(false)
+  address                    String?
+  profileImageUrl            String?
+  phoneNumber                String?
+  refreshToken               String?
+  stripeCustomerId           String?
+  bankAccount                BankAccount?
+  identityNumber             String?
+  identificationStatus       IdentificationStatus @default(PENDING)
+  identificationRejectReason String?
+  onesignalId                String?
+  selfieImageUrl             String?
+  idFrontImageUrl            String?
+  idBackImageUrl             String?
+
+  createdAt DateTime @default(now())
+
+  preference UserPreference?
+
+  campaignDonations               CampaignDonation[]
+  campaigns                       Campaign[]
+  campaignComments                CampaignComment[]
+  favouriteCampaigns              UserFavouriteCampaign[]
+  campaignUpdates                 CampaignUpdate[]
+  organization                    Organization?                   @relation(fields: [organizationId], references: [id])
+  createdOrganization             Organization[]                  @relation(name: "OrganizationCreator")
+  organizationId                  String?
+  sentGiftCards                   GiftCard[]                      @relation("SentGiftCards")
+  receivedGiftCards               GiftCard[]                      @relation("ReceivedGiftCards")
+  generatedNotifications          Notification[]                  @relation(name: "NotificationActors")
+  receivedNotifications           Notification[]                  @relation(name: "NotificationReceivers")
+  cancelledCollaborations         Collaboration[]
+  participatedCommunityChallenges CommunityChallengeParticipant[]
+  reportedScamReports             ScamReport[]
+  taxReceiptReports               TaxReceiptReports[]
+
+  @@map("users")
+}
+
+model UserPreference {
+  id                          String             @id @default(uuid())
+  favouriteCampaignCategories CampaignCategory[]
+  user                        User               @relation(fields: [userId], references: [id])
+  userId                      String             @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_preferences")
+}
+
+model UserFavouriteCampaign {
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  campaignId String
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, campaignId])
+  @@map("user_favourite_campaigns")
+}
+
+enum IdentificationStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+
+  @@map("IdentificationStatus")
+}
+
+enum CampaignPublishStatus {
+  PENDING
+  PUBLISHED
+  SUSPENDED
+}
+
+model Campaign {
+  id                  String                @id @default(uuid())
+  title               String
+  description         String
+  images              CampaignImage[]
+  videoUrl            String?
+  thumbnailUrl        String
+  stateAndRegion      State                 @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  stateId             String
+  targetAmount        Int
+  contactPhoneNumber  String
+  beneficiaryName     String
+  beneficiaryImageUrl String?
+  beneficiaryAgeGroup AgeGroup?
+  campaignCategory    CampaignCategory      @relation(fields: [campaignCategoryId], references: [id], onDelete: Cascade)
+  campaignCategoryId  String
+  expiredAt           DateTime?
+  status              CampaignPublishStatus @default(PENDING)
+  suspendReason       String?
+
+  // NOTE: Must be launched by a user account
+  // but organization is optional
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+
+  // Statistics (Directly stored to reduce complex & expensive query - JOIN and COUNT)
+  numOfDonations Int @default(0)
+  numOfLikes     Int @default(0)
+  numOfComments  Int @default(0)
+  numOfUpdates   Int @default(0)
+
+  // Identity (Fundraiser)
+  fundraiserSignatureUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  donations       CampaignDonation[]
+  campaignUpdates CampaignUpdate[]
+  comments        CampaignComment[]
+  favouritedBy    UserFavouriteCampaign[]
+  collaboration   Collaboration?
+  scamReports     ScamReport[]
+
+  @@map("campaigns")
+}
+
+model CampaignCategory {
+  id                  String               @id @default(uuid())
+  title               String
+  campaigns           Campaign[]
+  userPreferences     UserPreference[]
+  communityChallenges CommunityChallenge[]
+
+  @@map("campaign_categories")
+}
+
+model CampaignDonation {
+  id              String    @id @default(uuid())
+  campaign        Campaign  @relation(fields: [campaignId], references: [id])
+  campaignId      String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  amount          Int
+  createdAt       DateTime  @default(now())
+  isAnonymous     Boolean   @default(false)
+  paymentIntentId String?   @default("test")
+  giftCard        GiftCard?
+
+  @@map("campaign_donations")
+}
+
+model CampaignImage {
+  id         String   @id @default(uuid())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  imageUrl   String
+
+  @@map("campaign_images")
+}
+
+model CampaignUpdate {
+  id          String                @id @default(uuid())
+  title       String
+  description String
+  campaign    Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId  String
+  createdAt   DateTime              @default(now())
+  images      CampaignUpdateImage[]
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+
+  @@map("campaign_updates")
+}
+
+model CampaignUpdateImage {
+  id               String         @id @default(uuid())
+  imageUrl         String
+  campaignUpdate   CampaignUpdate @relation(fields: [campaignUpdateId], references: [id], onDelete: Cascade)
+  campaignUpdateId String
+
+  @@map("campaign_update_images")
+}
+
+model CampaignComment {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  comment    String
+  createdAt  DateTime @default(now())
+
+  parentId String?
+  parent   CampaignComment?  @relation("CommentReply", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  CampaignComment[] @relation("CommentReply")
+
+  @@map("campaign_comments")
+}
+
+// NOTE: CommentReply can be self-relation as both share the same structure
+// model CampaignCommentReply {
+//   id        String          @id @default(uuid())
+//   comment   CampaignComment @relation(fields: [commentId], references: [id])
+//   commentId String
+//   user      User            @relation(fields: [userId], references: [id])
+//   userId    String
+//   createdAt DateTime        @default(now())
+// }
+
+// NOTE: When role is required
+// enum OrganizationRole {
+//   FOUNDER
+//   MEMBER
+// }
+// model UserOrganizationProfile {
+//   @@map("user_organization_profiles")
+//   user User @relation(fields: [userId], references: [id])
+//   userId String @unique
+
+//   organization Organization @relation(fields: [organizationId], references: [id])
+//   organizationId String @unique
+
+//   @@id([userId, organizationId])
+// }
+
+model Organization {
+  id                 String  @id @default(uuid())
+  name               String
+  email              String
+  contactPhoneNumber String
+  slogan             String?
+  imageUrl           String?
+  invitationCode     String  @unique
+  isVerified         Boolean @default(false)
+  createdBy          User    @relation(name: "OrganizationCreator", fields: [creatorId], references: [id])
+  creatorId          String  @default("1a2470a2-cebc-4143-8568-a0c27f06b995")
+  members            User[]
+
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  campaigns      Campaign[]
+  collaborations Collaboration[]
+  bankAccount    OrganizationBankAccount?
+
+  @@index([invitationCode])
+  @@map("organizations")
+}
+
+model Collaboration {
+  id             String        @id @default(uuid())
+  campaign       Campaign?     @relation(fields: [campaignId], references: [id])
+  campaignId     String        @unique
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  reward         Float
+
+  isCancelled        Boolean   @default(false)
+  cancelledBy        User?     @relation(fields: [cancelledById], references: [id])
+  cancelledById      String?
+  cancellationReason String?
+  cancelledAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("collaborations")
+}
+
+enum AgeGroup {
+  BABY
+  CHILD
+  YOUNG_ADULT
+  ADULT_SENIOR
+}
+
+// Notification flow:
+// Publish some content (campaign update) -> 
+// Create notification who have donated to the campaign -> 
+// Users can see created notification
+
+enum NotificationType {
+  CAMPAIGN_UPDATE
+  DONATION_COIN
+  CAMPAIGN_REPLY
+  CAMPAIGN_COMMENT
+  COMMUNITY_CHALLENGE_REWARD
+  RECEIVE_DONATION
+  SCAM
+  CAMPAIGN_STATUS_CHANGED
+  NEW_MATCHED_CAMPAIGN
+}
+
+model Notification {
+  id   String           @id @default(uuid())
+  type NotificationType
+
+  title       String
+  description String
+  isRead      Boolean @default(false)
+  // Meta (Optional):
+  // {"header", "footer"}
+  metadata    Json?
+
+  // Who trigger this notification
+  actor   User   @relation(name: "NotificationActors", fields: [actorId], references: [id])
+  actorId String
+
+  receiver   User   @relation(name: "NotificationReceivers", fields: [receiverId], references: [id])
+  receiverId String
+
+  // Resource id for notification actions (e.g., navigate to that resource when tap)
+  entityId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notifications")
+}
+
+model GiftCard {
+  id                    String @id @default(uuid())
+  stripeTransferGroupId String
+  sender                User   @relation(name: "SentGiftCards", fields: [senderId], references: [id])
+  senderId              String
+  receiver              User   @relation(name: "ReceivedGiftCards", fields: [receiverId], references: [id])
+  receiverId            String
+  amount                Int
+  message               String @default("Wish you all the best!")
+
+  createdAt          DateTime          @default(now())
+  campaignDonation   CampaignDonation? @relation(fields: [campaignDonationId], references: [id])
+  campaignDonationId String?           @unique
+
+  @@map("gift_cards")
+}
+
+enum CommunityChallengeType {
+  DONATION
+  PHOTO
+}
+
+enum ChallengeRewardCollectMethod {
+  EMAIL
+}
+
+model CommunityChallenge {
+  id                       String                          @id @default(uuid())
+  title                    String
+  description              String
+  reward                   String
+  requirements             String[]
+  rule                     String
+  termsAndConditions       String
+  imageUrl                 String
+  targetCampaignCategories CampaignCategory[]
+  challengeType            CommunityChallengeType
+  rewardCollectMethod      ChallengeRewardCollectMethod
+  sponsorImageUrl          String?
+  sponsorName              String
+  requiredNumOfDonation    Int?
+  requiredDonationAmount   Int?
+  participants             CommunityChallengeParticipant[]
+
+  // Reward
+  isAutoSendReward Boolean @default(false)
+  rewardTemplateId String?
+
+  createdAt DateTime @default(now())
+  expiredAt DateTime
+
+  @@map("community_challenges")
+}
+
+enum ChallengeStatus {
+  IN_PROGRESS
+  UNDER_REVIEW
+  REJECTED
+  COMPLETED
+}
+
+model CommunityChallengeParticipant {
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId               String
+  communityChallenge   CommunityChallenge @relation(fields: [communityChallengeId], references: [id], onDelete: Cascade)
+  communityChallengeId String
+  // Challenge data:
+  // {
+  //   imageUrl: string;
+  //   isVerified: boolean;
+  // }
+  metadata             Json?
+  rewardEmailId        String?
+  rejectReason         String?
+  status               ChallengeStatus    @default(IN_PROGRESS)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, communityChallengeId])
+  @@map("community_challenges_participants")
+}
+
+enum ScamReportStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+model ScamReport {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  campaignId String
+
+  // Detailed information and evidence fields
+  description  String
+  evidenceUrls String[]
+  documentUrls String[]
+
+  // Status and resolution
+  status     ScamReportStatus @default(PENDING)
+  resolution String?
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("scam_reports")
+}
